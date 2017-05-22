@@ -10,9 +10,41 @@
         android:layout_height="wrap_content"/>
 
     <LinearLayout
+        android:orientation="vertical"
+        android:layout_gravity="top|left"
+        android:paddingTop="20dp"
+        android:paddingLeft="10dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content">
+        <TextView
+            android:id="@+id/tv_fv"
+            android:text="FV: 0"
+            android:textColor="#ff0000"
+            android:textSize="20sp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
+        <TextView
+            android:id="@+id/tv_position"
+            android:text="CurPosition: 0"
+            android:textColor="#ff0000"
+            android:textSize="20sp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:orientation="vertical"
         android:layout_gravity="bottom|center"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content">
+        <TextView
+            android:id="@+id/tv_pic_num"
+            android:text="0 pic"
+            android:textColor="#ff0000"
+            android:layout_gravity="center"
+            android:textSize="20sp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
         <ImageButton
             android:id="@+id/btn_shutter"
             android:src="@mipmap/shutter_button"
