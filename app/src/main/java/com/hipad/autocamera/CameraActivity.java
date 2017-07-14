@@ -1,6 +1,7 @@
 package com.hipad.autocamera;
 
 import android.app.Activity;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.hardware.Camera;
@@ -9,6 +10,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
+import android.view.OrientationEventListener;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -46,13 +48,18 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     private TextView mSceneTV;
     private boolean isAuto;
     private int num = 0;
+    private int mRotation;
+    private MyOrientationEventListener mOrientationEventListener;
     int i = 0;
     private static final int PIC_NUM = 1;
     private static final int SEND_AF_INFO = 2;
     private static final int RESPONSE = 3;
     private static final int AUTO_TAKE_PIC = 4;
     private static final int SWITCH_SENCE = 5;
-    private String[] mSenceList = {"8cm", "10cm", "14cm", "20cm", "30cm", "40cm", "50cm", "70cm", "120cm"};
+    private static final int TURN_ON_FLASH = 6;
+    private static final int TURN_OFF_FLASH = 7;
+//    private String[] mSenceList = {"8cm", "10cm"};
+    private String[] mSenceList = {"8cm", "10cm", "14cm", "20cm", "30cm", "40cm", "50cm", "60cm", "120cm", "245cm", "far end"};
     private String[] mModeList = {"fullsweep", "single"};
 
     @Override
@@ -74,19 +81,27 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         SurfaceHolder surfaceHolder = mSurface.getHolder();
         surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
         surfaceHolder.addCallback(this);
+        mOrientationEventListener = new MyOrientationEventListener(this);
         findViewById(R.id.btn_shutter).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
+                Camera.Parameters parameters = mCamera.getParameters();
+                Log.d("bluedai", "onClick: " + getJepgRotation(mRotation));
+                Camera.CameraInfo info = new Camera.CameraInfo();
+                parameters.setRotation(getJepgRotation(mRotation));
+                mCamera.setParameters(parameters);
                 mCamera.autoFocus(new Camera.AutoFocusCallback() {
                     @Override
                     public void onAutoFocus(boolean b, Camera camera) {
                         if (b) {
+                            Log.d("bluedai", "onAutoFocus: " + b);
                             mCamera.takePicture(null, null, mPictureCallback);
                             mHandler.sendEmptyMessage(PIC_NUM);
                             num += 1;
                         }
                     }
                 });
+
             }
         });
         readFromPC();
@@ -121,10 +136,14 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
                         mCamera.autoFocus(new Camera.AutoFocusCallback() {
                             @Override
                             public void onAutoFocus(boolean b, Camera camera) {
-                                mCamera.takePicture(null, null, mPictureCallback);
-                                mHandler.sendEmptyMessage(PIC_NUM);
-                                num += 1;
-                                autoTakePic();
+                                if (b){
+                                    mCamera.takePicture(null, null, mPictureCallback);
+                                    mHandler.sendEmptyMessage(PIC_NUM);
+                                    num += 1;
+                                    autoTakePic();
+                                } else {
+                                    autoTakePic();
+                                }
                             }
                         });
                     }
@@ -140,12 +159,29 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
                     } else {
                         try {
                             sendToPC("package:af action:done \n");
-                            Runtime.getRuntime().exec("input keyevent 4");
+                            if ("single".equals(mMode)){
+                                Runtime.getRuntime().exec("input keyevent 4");
+                                Runtime.getRuntime().exec("input keyevent 4");
+                            } else {
+                                Runtime.getRuntime().exec("input keyevent 4");
+                            }
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
                     }
                     sendToPC("package:af action:move \n");
+                    break;
+                case TURN_ON_FLASH:
+                    Camera.Parameters parameters = null;
+                    parameters = mCamera.getParameters();
+                    parameters.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
+                    mCamera.setParameters(parameters);
+                    break;
+                case TURN_OFF_FLASH:
+                    Camera.Parameters parameters_off = null;
+                    parameters_off = mCamera.getParameters();
+                    parameters_off.setFlashMode(Camera.Parameters.FLASH_MODE_OFF);
+                    mCamera.setParameters(parameters_off);
                     break;
             }
         }
@@ -194,12 +230,16 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
             Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
             File pictureFile = new File(mediaStorageDir.getPath() + File.separator + mScene + "_" + timeStamp + ".jpg");
             try {
-                BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(pictureFile));
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, bos);
-                bos.flush();
-                bos.close();
+                FileOutputStream fos = new FileOutputStream(pictureFile);
+                fos.write(bytes);
+                fos.close();
+//                BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(pictureFile));
+//                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, bos);
+//                bos.flush();
+//                bos.close();
                 camera.stopPreview();
                 camera.startPreview();
+//                mCamera.cancelAutoFocus();
                 bitmap.recycle();
             } catch (Exception e) {
                 e.printStackTrace();
@@ -215,25 +255,40 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     @Override
     protected void onResume() {
         super.onResume();
+        mOrientationEventListener.enable();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        mOrientationEventListener.disable();
     }
 
     @Override
     public void surfaceCreated(SurfaceHolder surfaceHolder) {
         try {
+            Log.d(TAG, "surfaceCreated: ");
             mCamera = Camera.open(0);
             if (mCamera != null) {
                 mCamera.setPreviewDisplay(surfaceHolder);
                 Camera.Parameters parameters = mCamera.getParameters();
                 for (Camera.Size size : parameters.getSupportedPreviewSizes()) {
-                    Log.d(TAG, "surfaceCreated: " + size.width + size.height);
+                    Log.d(TAG, "surfaceCreated: previewsize " + size.width + size.height);
+                }
+                for (Camera.Size size : parameters.getSupportedPictureSizes()) {
+                    Log.d(TAG, "surfaceCreated: picturesize " + size.width + size.height);
                 }
                 parameters.setPreviewSize(1280, 720);
-                parameters.setPictureSize(1280, 720);
+                parameters.setPictureSize(4160, 3120);
+
+//                parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
                 parameters.setFocusMode(Camera.Parameters.FLASH_MODE_AUTO);
+//                parameters.setRotation(90);
                 mCamera.setParameters(parameters);
-                mCamera.setDisplayOrientation(270);
+                mCamera.setDisplayOrientation(90);
                 mCamera.enableShutterSound(true);
                 mCamera.startPreview();
+                mCamera.cancelAutoFocus();
             }
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -242,11 +297,12 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
 
     @Override
     public void surfaceChanged(SurfaceHolder surfaceHolder, int i, int i1, int i2) {
-
+        Log.d(TAG, "surfaceChanged: ");
     }
 
     @Override
     public void surfaceDestroyed(SurfaceHolder surfaceHolder) {
+        Log.d(TAG, "surfaceDestroyed: ");
         if (mCamera != null) {
             mCamera.stopPreview();
             try {
@@ -263,6 +319,37 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     public void onBackPressed() {
         super.onBackPressed();
         writeToFile();
+    }
+
+    private class MyOrientationEventListener extends OrientationEventListener{
+
+        public MyOrientationEventListener (Context context) {
+            super(context);
+        }
+
+        @Override
+        public void onOrientationChanged(int orientation) {
+            mRotation = orientation;
+            Log.d("bluedai", "onOrientationChanged: " + orientation);
+        }
+    }
+
+    private int getJepgRotation(int orientation) {
+        int rotation = 0;
+        if (orientation != OrientationEventListener.ORIENTATION_UNKNOWN) {
+//            Camera.CameraInfo info = new Camera.CameraInfo();
+            if (orientation < 45 || orientation >= 315) {
+                rotation = 90;
+            } else if (orientation >= 45 && orientation < 135) {
+                rotation = 180;
+            } else if (orientation >= 135 && orientation < 225) {
+                rotation = 270;
+            } else if (orientation >= 225 && orientation < 315) {
+                rotation = 0;
+            }
+//            rotation = (90 + orientation) % 360;
+        }
+        return rotation;
     }
 
     private void writeToFile() {

@@ -1,9 +1,11 @@
 package com.hipad.autocamera;
 
 import android.Manifest;
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -32,6 +34,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private final static int MY_PERMISSION_CAMERA = 1;
     private String mMode = "fullsweep";
     private String mDistance = "cm";
+    private String ip;
     private Handler mMainHandler;
     private Socket socket;
     OutputStream outputStream;
@@ -66,7 +69,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         if (getIntent().getStringExtra("mode") != null) {
             mMode = getIntent().getStringExtra("mode");
         }
-
+        if (getIntent().getStringExtra("ip") != null) {
+            ip = getIntent().getStringExtra("ip");
+            SharedPreferences sharedPreferences = getSharedPreferences("auto_camera", Activity.MODE_PRIVATE);
+            SharedPreferences.Editor editor = sharedPreferences.edit();
+            editor.putString("ip", ip);
+            editor.apply();
+            Toast.makeText(MainActivity.this, ip, Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(MainActivity.this, "set ip addr", Toast.LENGTH_SHORT).show();
+        }
         RadioGroup group = (RadioGroup) findViewById(R.id.radio_group);
         group.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
             @Override
@@ -103,14 +115,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         };
 
         connectToPC();
-//        if (isAuto) {
-//            Intent intent = new Intent(MainActivity.this, CameraActivity.class);
-//            intent.putExtra("mode", mMode);
-//            intent.putExtra("Scene", "8cm");
-//            intent.putExtra("auto", true);
-//            clearLogcat();
-//            startActivity(intent);
-//        }
         readFromPC();
     }
 
@@ -183,10 +187,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         }).show();
                 break;
             case R.id.btn_auto:
-//                intent.putExtra("Scene", "8cm");
-//                intent.putExtra("auto", true);
-//                startActivity(intent);
-                intent.putExtra("mode", "single");
+                intent.putExtra("mode", mMode);
                 intent.putExtra("Scene", "8cm");
                 intent.putExtra("auto", true);
                 clearLogcat();
@@ -236,8 +237,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             Runtime.getRuntime().exec("input keyevent 224");
             Runtime.getRuntime().exec("pm grant com.hipad.autocamera android.permission.READ_LOGS");
             Runtime.getRuntime().exec("setprop service.adb.tcp.port 5555");
-//            Runtime.getRuntime().exec("stop adbd");
-//            Runtime.getRuntime().exec("start adbd");
             Runtime.getRuntime().exec("setprop sys.restart.adbd 1");
 //            Runtime.getRuntime().exec("setprop sys.usb.config diag,adb");
 //            Runtime.getRuntime().exec("setprop sys.usb.config mtp,adb");
@@ -263,13 +262,17 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             @Override
             public void run() {
                 try {
-                    socket = new Socket("192.168.0.101", 5055);
-//                    socket = new Socket("192.168.43.71", 5055);
+                    if (ip == null){
+                        SharedPreferences sharedPreferences = getSharedPreferences("auto_camera", Activity.MODE_PRIVATE);
+                        String localIp = sharedPreferences.getString("ip", "");
+                        socket = new Socket(localIp, 5055);
+                    } else {
+                        socket = new Socket(ip, 5055);
+                    }
                     SocketHandler.setSocket(socket);
                     if (socket.isConnected()) {
                         mMainHandler.sendEmptyMessage(0);
                     }
-                    Log.d("bluedai", "connect: " + socket.isConnected());
                 } catch (IOException e) {
                     e.printStackTrace();
                     Log.d(TAG, "connect: failed");
@@ -290,7 +293,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                             InputStreamReader isr = new InputStreamReader(is);
                             BufferedReader br = new BufferedReader(isr);
                             String response = br.readLine();
-                            Log.d("bluedai", "run: " + response);
                             if (response != null && response.contains("action:start")) {
                                 Intent intent = new Intent(MainActivity.this, CameraActivity.class);
                                 intent.putExtra("Scene", "8cm");
